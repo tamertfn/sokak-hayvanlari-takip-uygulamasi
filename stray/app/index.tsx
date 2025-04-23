@@ -1,6 +1,5 @@
-import React from 'react';
-import TestScreen from '../src/screens/TestScreen';
+import { Redirect } from 'expo-router';
 
-export default function App() {
-  return <TestScreen />;
+export default function Index() {
+  return <Redirect href="/login" />;
 }
