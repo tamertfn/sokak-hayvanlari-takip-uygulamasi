@@ -49,6 +49,12 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="yeni-pati"
+        options={{
+          href: null,
+        }}
+      />
     </Tabs>
   );
 }
