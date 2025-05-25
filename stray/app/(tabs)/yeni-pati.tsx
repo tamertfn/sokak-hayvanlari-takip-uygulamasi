@@ -4,6 +4,11 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Picker } from '@react-native-picker/picker';
+import { uploadImage } from '../../src/utils/imageUpload';
+import { db } from '../../src/config/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import * as Location from 'expo-location';
+import { auth } from '../../src/config/firebase';
 
 type HealthStatus = 'sağlıklı' | 'hasta' | 'yaralı' | 'bilinmiyor';
 
@@ -43,10 +48,42 @@ export default function YeniPatiScreen() {
 
     setLoading(true);
     try {
-      // TODO: Firebase'e kaydetme işlemi burada yapılacak
+      // Konum izni kontrolü
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Hata', 'Konum izni gereklidir');
+        return;
+      }
+
+      // Konum al
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      // Fotoğrafı Cloudinary'e yükle
+      const imageUrl = await uploadImage(photo);
+
+      // Firestore'a kaydet
+      const patiData = {
+        name: name || null,
+        healthStatus,
+        hasFood,
+        notes: notes || null,
+        imageUrl,
+        location: {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        },
+        createdAt: serverTimestamp(),
+        userId: auth.currentUser?.uid,
+      };
+
+      await addDoc(collection(db, 'patiler'), patiData);
+
       Alert.alert('Başarılı', 'Pati başarıyla kaydedildi!');
       router.back();
     } catch (error) {
+      console.error('Hata:', error);
       Alert.alert('Hata', 'Pati kaydedilirken bir hata oluştu');
     } finally {
       setLoading(false);
@@ -105,7 +142,7 @@ export default function YeniPatiScreen() {
             size={24}
             color="#FF6B6B"
           />
-          <Text style={styles.checkboxText}>Etrafında yemek var mı?</Text>
+          <Text style={styles.checkboxText}>Etrafında yemek var</Text>
         </TouchableOpacity>
 
         <Text style={styles.label}>Notlar</Text>
