@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Dimensions, Alert, TouchableOpacity, Image, Modal, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, Alert, TouchableOpacity, Image, Modal, ScrollView, ActivityIndicator } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { useEffect, useState } from 'react';
 import * as Location from 'expo-location';
@@ -34,6 +34,7 @@ export default function TabIndexScreen() {
   const [patiler, setPatiler] = useState<Pati[]>([]);
   const [selectedPati, setSelectedPati] = useState<Pati | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -63,6 +64,7 @@ export default function TabIndexScreen() {
 
   const fetchPatiler = async () => {
     try {
+      setIsLoading(true);
       const querySnapshot = await getDocs(collection(db, 'patiler'));
       const patiList = querySnapshot.docs.map(doc => ({
         id: doc.id,
@@ -71,6 +73,9 @@ export default function TabIndexScreen() {
       setPatiler(patiList);
     } catch (error) {
       console.error('Patiler yüklenirken hata:', error);
+      Alert.alert('Hata', 'Patiler yüklenirken bir hata oluştu.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -169,6 +174,18 @@ export default function TabIndexScreen() {
           >
             {patiler.map(renderPatiMarker)}
           </MapView>
+
+          <TouchableOpacity 
+            style={styles.refreshButton}
+            onPress={fetchPatiler}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <ActivityIndicator color="white" />
+            ) : (
+              <Ionicons name="refresh" size={24} color="white" />
+            )}
+          </TouchableOpacity>
 
           <TouchableOpacity 
             style={styles.fab}
@@ -403,5 +420,24 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  refreshButton: {
+    position: 'absolute',
+    right: 20,
+    top: 20,
+    backgroundColor: '#FF6B6B',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
 });
