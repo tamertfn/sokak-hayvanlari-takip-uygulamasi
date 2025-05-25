@@ -35,6 +35,10 @@ export default function LoginScreen() {
     }
   };
 
+  const handleTestLogin = () => {
+    router.replace('/(tabs)/' as any);
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Giriş Yap</Text>
@@ -66,6 +70,14 @@ export default function LoginScreen() {
         title="Kayıt Ol"
         onPress={() => router.push('/register' as any)}
       />
+
+      <View style={styles.testButtonContainer}>
+        <Button
+          title="Test Girişi (Haritaya Git)"
+          onPress={handleTestLogin}
+          color="#FF6B6B"
+        />
+      </View>
     </View>
   );
 }
@@ -88,5 +100,11 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 5,
     marginBottom: 15,
+  },
+  testButtonContainer: {
+    marginTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#ddd',
+    paddingTop: 20,
   }
 });
