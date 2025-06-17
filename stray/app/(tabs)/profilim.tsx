@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, TextInput, FlatList, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, TextInput, FlatList, ActivityIndicator, Modal, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../../src/config/firebase';
 import { db } from '../../src/config/firebase';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, doc, getDoc, onSnapshot, addDoc, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { router } from 'expo-router';
 
 type UserProfile = {
@@ -27,6 +27,12 @@ type FavoritePati = {
   userId?: string;
 };
 
+type Comment = {
+  id: string;
+  userId: string;
+  text: string;
+};
+
 export default function ProfilimScreen() {
   const [isEditing, setIsEditing] = useState(false);
   const [editedProfile, setEditedProfile] = useState<UserProfile>({
@@ -37,6 +43,12 @@ export default function ProfilimScreen() {
   });
   const [favorites, setFavorites] = useState<FavoritePati[]>([]);
   const [loadingFavorites, setLoadingFavorites] = useState(true);
+  const [selectedPati, setSelectedPati] = useState<FavoritePati | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [newComment, setNewComment] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(false);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -116,15 +128,80 @@ export default function ProfilimScreen() {
     }
   };
 
+  const handlePatiSelect = async (pati: FavoritePati) => {
+    setSelectedPati(pati);
+    setModalVisible(true);
+    // Favori durumunu kontrol et
+    if (auth.currentUser) {
+      const favoriteRef = doc(db, 'favorites', `${auth.currentUser.uid}_${pati.id}`);
+      const favoriteDoc = await getDoc(favoriteRef);
+      setIsFavorite(favoriteDoc.exists());
+    }
+    // Yorumları dinlemeye başla
+    const commentsQuery = query(
+      collection(db, 'comments'),
+      where('patiId', '==', pati.id),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(commentsQuery, (snapshot) => {
+      const commentsList = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Comment[];
+      setComments(commentsList);
+    });
+
+    return () => unsubscribe();
+  };
+
+  const handleAddComment = async () => {
+    if (!newComment.trim() || !selectedPati || !auth.currentUser) return;
+
+    try {
+      setIsSubmitting(true);
+      await addDoc(collection(db, 'comments'), {
+        patiId: selectedPati.id,
+        userId: auth.currentUser.uid,
+        text: newComment.trim(),
+        createdAt: serverTimestamp()
+      });
+      setNewComment('');
+    } catch (error) {
+      console.error('Yorum eklenirken hata:', error);
+      Alert.alert('Hata', 'Yorum eklenirken bir hata oluştu.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const toggleFavorite = async () => {
+    if (!selectedPati || !auth.currentUser) return;
+
+    try {
+      const favoriteRef = doc(db, 'favorites', `${auth.currentUser.uid}_${selectedPati.id}`);
+      
+      if (isFavorite) {
+        await deleteDoc(favoriteRef);
+        setIsFavorite(false);
+      } else {
+        await setDoc(favoriteRef, {
+          userId: auth.currentUser.uid,
+          patiId: selectedPati.id,
+          createdAt: serverTimestamp()
+        });
+        setIsFavorite(true);
+      }
+    } catch (error) {
+      console.error('Favori işlemi sırasında hata:', error);
+      Alert.alert('Hata', 'Favori işlemi sırasında bir hata oluştu.');
+    }
+  };
+
   const renderFavoriteItem = ({ item }: { item: FavoritePati }) => (
     <TouchableOpacity
       style={styles.favoriteItem}
-      onPress={() => {
-        router.push({
-          pathname: '/(tabs)',
-          params: { selectedPatiId: item.id }
-        });
-      }}
+      onPress={() => handlePatiSelect(item)}
     >
       <Image source={{ uri: item.imageUrl }} style={styles.favoriteImage} />
       <View style={styles.favoriteInfo}>
@@ -253,6 +330,106 @@ export default function ProfilimScreen() {
           </>
         )}
       </View>
+
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            {selectedPati && (
+              <>
+                <Image
+                  source={{ uri: selectedPati.imageUrl }}
+                  style={styles.modalImage}
+                />
+                <ScrollView style={styles.modalDetails}>
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalName}>
+                      {selectedPati.name || 'İsimsiz Pati'}
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.favoriteButton}
+                      onPress={toggleFavorite}
+                    >
+                      <Ionicons
+                        name={isFavorite ? 'heart' : 'heart-outline'}
+                        size={24}
+                        color={isFavorite ? '#FF6B6B' : '#666'}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                  
+                  <View style={styles.healthStatus}>
+                    <Ionicons
+                      name={getHealthStatusIcon(selectedPati.healthStatus)}
+                      size={24}
+                      color={getHealthStatusColor(selectedPati.healthStatus)}
+                    />
+                    <Text style={[styles.healthText, { color: getHealthStatusColor(selectedPati.healthStatus) }]}>
+                      {selectedPati.healthStatus}
+                    </Text>
+                  </View>
+
+                  {selectedPati.hasFood && (
+                    <View style={styles.foodStatus}>
+                      <Ionicons name="restaurant" size={24} color="#4CAF50" />
+                      <Text style={styles.foodText}>Etrafında yemek var</Text>
+                    </View>
+                  )}
+
+                  {selectedPati.notes && (
+                    <View style={styles.notesContainer}>
+                      <Text style={styles.notesLabel}>Notlar:</Text>
+                      <Text style={styles.notesText}>{selectedPati.notes}</Text>
+                    </View>
+                  )}
+
+                  <View style={styles.commentsContainer}>
+                    <Text style={styles.commentsTitle}>Yorumlar</Text>
+                    {comments.map((comment) => (
+                      <View key={comment.id} style={styles.commentItem}>
+                        <Text style={styles.commentUserId}>{comment.userId}</Text>
+                        <Text style={styles.commentText}>{comment.text}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </ScrollView>
+
+                <View style={styles.commentInputContainer}>
+                  <TextInput
+                    style={styles.commentInput}
+                    value={newComment}
+                    onChangeText={setNewComment}
+                    placeholder="Yorum yaz..."
+                    multiline
+                  />
+                  <TouchableOpacity
+                    style={[styles.commentButton, (!newComment.trim() || isSubmitting) && styles.commentButtonDisabled]}
+                    onPress={handleAddComment}
+                    disabled={!newComment.trim() || isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <ActivityIndicator color="white" size="small" />
+                    ) : (
+                      <Ionicons name="send" size={24} color="white" />
+                    )}
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={() => setModalVisible(false)}
+                >
+                  <Text style={styles.closeButtonText}>Kapat</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -443,5 +620,123 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#666',
     padding: 20,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    height: '80%',
+  },
+  modalImage: {
+    width: '100%',
+    height: 200,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  modalDetails: {
+    padding: 16,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalName: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  favoriteButton: {
+    padding: 8,
+  },
+  foodStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  foodText: {
+    marginLeft: 8,
+    fontSize: 16,
+    color: '#4CAF50',
+  },
+  notesContainer: {
+    marginBottom: 16,
+  },
+  notesLabel: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 8,
+  },
+  notesText: {
+    fontSize: 16,
+    color: '#666',
+    lineHeight: 24,
+  },
+  commentsContainer: {
+    marginTop: 16,
+  },
+  commentsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 16,
+  },
+  commentItem: {
+    backgroundColor: '#f8f8f8',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  commentUserId: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
+  },
+  commentText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  commentInputContainer: {
+    flexDirection: 'row',
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  commentInput: {
+    flex: 1,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 8,
+    maxHeight: 100,
+  },
+  commentButton: {
+    backgroundColor: '#FF6B6B',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  commentButtonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  closeButton: {
+    backgroundColor: '#f8f8f8',
+    padding: 16,
+    alignItems: 'center',
+  },
+  closeButtonText: {
+    color: '#FF6B6B',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 }); 
