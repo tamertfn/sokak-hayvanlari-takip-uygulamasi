@@ -18,7 +18,7 @@ export default function RootLayout() {
       <Stack.Screen 
         name="register" 
         options={{ 
-          headerTitle: "Kayıt Ol"
+          headerShown: false 
         }} 
       />
       <Stack.Screen 
