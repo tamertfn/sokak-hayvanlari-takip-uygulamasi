@@ -1,13 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, TextInput } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, TextInput, FlatList, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../../src/config/firebase';
+import { db } from '../../src/config/firebase';
+import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { router } from 'expo-router';
 
 type UserProfile = {
   displayName: string;
   email: string;
   photoURL: string;
   bio: string | null;
+};
+
+type FavoritePati = {
+  id: string;
+  name: string | null;
+  healthStatus: string;
+  imageUrl: string;
+  location: {
+    latitude: number;
+    longitude: number;
+  };
+  hasFood: boolean;
+  notes: string | null;
+  userId?: string;
 };
 
 export default function ProfilimScreen() {
@@ -18,6 +35,8 @@ export default function ProfilimScreen() {
     photoURL: '',
     bio: 'Hayvan sever ve doğa dostu biriyim. Sokak hayvanlarına yardım etmeyi seviyorum.'
   });
+  const [favorites, setFavorites] = useState<FavoritePati[]>([]);
+  const [loadingFavorites, setLoadingFavorites] = useState(true);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -30,7 +49,99 @@ export default function ProfilimScreen() {
         bio: 'Hayvan sever ve doğa dostu biriyim. Sokak hayvanlarına yardım etmeyi seviyorum.'
       });
     }
+    fetchFavorites();
   }, []);
+
+  const fetchFavorites = async () => {
+    if (!auth.currentUser) return;
+
+    try {
+      setLoadingFavorites(true);
+      // Favorileri getir
+      const favoritesQuery = query(
+        collection(db, 'favorites'),
+        where('userId', '==', auth.currentUser.uid),
+        orderBy('createdAt', 'desc')
+      );
+      const favoritesSnapshot = await getDocs(favoritesQuery);
+      
+      // Favori patilerin detaylarını getir
+      const favoritePatiler = await Promise.all(
+        favoritesSnapshot.docs.map(async (doc) => {
+          const patiId = doc.data().patiId;
+          const patiDoc = await getDocs(
+            query(collection(db, 'patiler'), where('__name__', '==', patiId))
+          );
+          if (!patiDoc.empty) {
+            return {
+              id: patiDoc.docs[0].id,
+              ...patiDoc.docs[0].data()
+            } as FavoritePati;
+          }
+          return null;
+        })
+      );
+
+      setFavorites(favoritePatiler.filter((pati): pati is FavoritePati => pati !== null));
+    } catch (error) {
+      console.error('Favoriler yüklenirken hata:', error);
+    } finally {
+      setLoadingFavorites(false);
+    }
+  };
+
+  const getHealthStatusColor = (status: string) => {
+    switch (status.toLowerCase()) {
+      case 'sağlıklı':
+        return '#4CAF50';
+      case 'hasta':
+        return '#FF6B6B';
+      case 'yaralı':
+        return '#FFA000';
+      default:
+        return '#9E9E9E';
+    }
+  };
+
+  const getHealthStatusIcon = (status: string) => {
+    switch (status.toLowerCase()) {
+      case 'sağlıklı':
+        return 'checkmark-circle';
+      case 'hasta':
+        return 'medical';
+      case 'yaralı':
+        return 'bandage';
+      default:
+        return 'help-circle';
+    }
+  };
+
+  const renderFavoriteItem = ({ item }: { item: FavoritePati }) => (
+    <TouchableOpacity
+      style={styles.favoriteItem}
+      onPress={() => {
+        router.push({
+          pathname: '/(tabs)',
+          params: { selectedPatiId: item.id }
+        });
+      }}
+    >
+      <Image source={{ uri: item.imageUrl }} style={styles.favoriteImage} />
+      <View style={styles.favoriteInfo}>
+        <Text style={styles.favoriteName}>{item.name || 'İsimsiz Pati'}</Text>
+        <View style={styles.healthStatus}>
+          <Ionicons
+            name={getHealthStatusIcon(item.healthStatus)}
+            size={16}
+            color={getHealthStatusColor(item.healthStatus)}
+          />
+          <Text style={[styles.healthText, { color: getHealthStatusColor(item.healthStatus) }]}>
+            {item.healthStatus}
+          </Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
 
   const handleEdit = () => {
     setIsEditing(true);
@@ -101,29 +212,47 @@ export default function ProfilimScreen() {
             </View>
           </>
         ) : (
-          <View style={styles.card}>
-            <View style={styles.infoGroup}>
-              <View style={styles.infoRow}>
-                <Ionicons name="mail-outline" size={20} color="#666" style={styles.infoIcon} />
-                <View style={styles.infoContent}>
-                  <Text style={styles.label}>E-posta</Text>
-                  <Text style={styles.infoText}>{editedProfile.email}</Text>
-                </View>
-              </View>
+          <>
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>Favorilerim</Text>
+              {loadingFavorites ? (
+                <ActivityIndicator color="#FF6B6B" style={styles.loadingIndicator} />
+              ) : favorites.length === 0 ? (
+                <Text style={styles.emptyText}>Henüz favori patiniz yok</Text>
+              ) : (
+                <FlatList
+                  data={favorites}
+                  renderItem={renderFavoriteItem}
+                  keyExtractor={(item) => item.id}
+                  scrollEnabled={false}
+                />
+              )}
             </View>
 
-            <View style={styles.infoGroup}>
-              <View style={styles.infoRow}>
-                <Ionicons name="information-circle-outline" size={20} color="#666" style={styles.infoIcon} />
-                <View style={styles.infoContent}>
-                  <Text style={styles.label}>Hakkımda</Text>
-                  <Text style={styles.infoText}>{editedProfile.bio}</Text>
+            <View style={styles.card}>
+              <View style={styles.infoGroup}>
+                <View style={styles.infoRow}>
+                  <Ionicons name="mail-outline" size={20} color="#666" style={styles.infoIcon} />
+                  <View style={styles.infoContent}>
+                    <Text style={styles.label}>E-posta</Text>
+                    <Text style={styles.infoText}>{editedProfile.email}</Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.infoGroup}>
+                <View style={styles.infoRow}>
+                  <Ionicons name="information-circle-outline" size={20} color="#666" style={styles.infoIcon} />
+                  <View style={styles.infoContent}>
+                    <Text style={styles.label}>Hakkımda</Text>
+                    <Text style={styles.infoText}>{editedProfile.bio}</Text>
+                  </View>
                 </View>
               </View>
             </View>
-          </View>
+          </>
         )}
-    </View>
+      </View>
     </ScrollView>
   );
 }
@@ -269,5 +398,50 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 16,
+  },
+  favoriteItem: {
+    flexDirection: 'row',
+    backgroundColor: '#f8f8f8',
+    borderRadius: 8,
+    marginBottom: 8,
+    overflow: 'hidden',
+  },
+  favoriteImage: {
+    width: 80,
+    height: 80,
+  },
+  favoriteInfo: {
+    flex: 1,
+    padding: 12,
+    justifyContent: 'center',
+  },
+  favoriteName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  healthStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  healthText: {
+    marginLeft: 4,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  loadingIndicator: {
+    padding: 20,
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: '#666',
+    padding: 20,
   },
 }); 

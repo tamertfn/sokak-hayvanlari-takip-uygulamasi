@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, ActivityIndi
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { db } from '../../src/config/firebase';
-import { collection, query, where, getDocs, addDoc, serverTimestamp, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, serverTimestamp, orderBy, onSnapshot, doc, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { auth } from '../../src/config/firebase';
 
 type Pati = {
@@ -38,6 +38,7 @@ export default function UserPatilerScreen() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(false);
 
   useEffect(() => {
     fetchUserPatiler();
@@ -107,6 +108,12 @@ export default function UserPatilerScreen() {
   const handlePatiSelect = async (pati: Pati) => {
     setSelectedPati(pati);
     setModalVisible(true);
+    // Favori durumunu kontrol et
+    if (auth.currentUser) {
+      const favoriteRef = doc(db, 'favorites', `${auth.currentUser.uid}_${pati.id}`);
+      const favoriteDoc = await getDoc(favoriteRef);
+      setIsFavorite(favoriteDoc.exists());
+    }
     // Yorumları dinlemeye başla
     const commentsQuery = query(
       collection(db, 'comments'),
@@ -122,7 +129,6 @@ export default function UserPatilerScreen() {
       setComments(commentsList);
     });
 
-    // Component unmount olduğunda dinlemeyi durdur
     return () => unsubscribe();
   };
 
@@ -143,6 +149,29 @@ export default function UserPatilerScreen() {
       Alert.alert('Hata', 'Yorum eklenirken bir hata oluştu.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const toggleFavorite = async () => {
+    if (!selectedPati || !auth.currentUser) return;
+
+    try {
+      const favoriteRef = doc(db, 'favorites', `${auth.currentUser.uid}_${selectedPati.id}`);
+      
+      if (isFavorite) {
+        await deleteDoc(favoriteRef);
+        setIsFavorite(false);
+      } else {
+        await setDoc(favoriteRef, {
+          userId: auth.currentUser.uid,
+          patiId: selectedPati.id,
+          createdAt: serverTimestamp()
+        });
+        setIsFavorite(true);
+      }
+    } catch (error) {
+      console.error('Favori işlemi sırasında hata:', error);
+      Alert.alert('Hata', 'Favori işlemi sırasında bir hata oluştu.');
     }
   };
 
@@ -236,9 +265,21 @@ export default function UserPatilerScreen() {
                   style={styles.modalImage}
                 />
                 <ScrollView style={styles.modalDetails}>
-                  <Text style={styles.modalName}>
-                    {selectedPati.name || 'İsimsiz Pati'}
-                  </Text>
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalName}>
+                      {selectedPati.name || 'İsimsiz Pati'}
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.favoriteButton}
+                      onPress={toggleFavorite}
+                    >
+                      <Ionicons
+                        name={isFavorite ? 'heart' : 'heart-outline'}
+                        size={24}
+                        color={isFavorite ? '#FF6B6B' : '#666'}
+                      />
+                    </TouchableOpacity>
+                  </View>
                   
                   <View style={styles.healthStatus}>
                     <Ionicons
@@ -516,5 +557,14 @@ const styles = StyleSheet.create({
   },
   commentButtonDisabled: {
     backgroundColor: '#ccc',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  favoriteButton: {
+    padding: 8,
   },
 }); 
