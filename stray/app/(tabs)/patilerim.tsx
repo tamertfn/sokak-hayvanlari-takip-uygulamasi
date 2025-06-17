@@ -1,10 +1,11 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Image, FlatList, Dimensions, TouchableOpacity, ActivityIndicator, RefreshControl, Alert, Modal, ScrollView } from 'react-native';
+import React, { useState, useCallback, useEffect } from 'react';
+import { View, Text, StyleSheet, Image, FlatList, Dimensions, TouchableOpacity, ActivityIndicator, RefreshControl, Alert, Modal, ScrollView, TextInput } from 'react-native';
 import { db } from '../../src/config/firebase';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { auth } from '../../src/config/firebase';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { useLocalSearchParams, router } from 'expo-router';
 
 type Pati = {
   id: string;
@@ -22,12 +23,20 @@ type Pati = {
 };
 
 export default function PatilerimScreen() {
+  const { editId } = useLocalSearchParams();
   const [patiler, setPatiler] = useState<Pati[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedPati, setSelectedPati] = useState<Pati | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    healthStatus: '',
+    notes: '',
+    hasFood: false
+  });
 
   const fetchPatiler = async () => {
     try {
@@ -92,6 +101,72 @@ export default function PatilerimScreen() {
     setRefreshing(true);
     fetchPatiler();
   }, []);
+
+  useEffect(() => {
+    if (editId) {
+      const pati = patiler.find(p => p.id === editId);
+      if (pati) {
+        setSelectedPati(pati);
+        setEditForm({
+          name: pati.name || '',
+          healthStatus: pati.healthStatus,
+          notes: pati.notes || '',
+          hasFood: pati.hasFood
+        });
+        setEditModalVisible(true);
+      }
+    }
+  }, [editId, patiler]);
+
+  const handleEdit = async () => {
+    if (!selectedPati) return;
+
+    try {
+      const patiRef = doc(db, 'patiler', selectedPati.id);
+      await updateDoc(patiRef, {
+        name: editForm.name,
+        healthStatus: editForm.healthStatus,
+        notes: editForm.notes,
+        hasFood: editForm.hasFood,
+        updatedAt: new Date()
+      });
+
+      Alert.alert('Başarılı', 'Pati bilgileri güncellendi');
+      setEditModalVisible(false);
+      fetchPatiler();
+    } catch (error) {
+      console.error('Pati güncellenirken hata:', error);
+      Alert.alert('Hata', 'Pati güncellenirken bir hata oluştu');
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!selectedPati) return;
+
+    Alert.alert(
+      'Pati Sil',
+      'Bu patiyi silmek istediğinizden emin misiniz?',
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Sil',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const patiRef = doc(db, 'patiler', selectedPati.id);
+              await deleteDoc(patiRef);
+              Alert.alert('Başarılı', 'Pati başarıyla silindi');
+              setModalVisible(false);
+              fetchPatiler();
+            } catch (error) {
+              console.error('Pati silinirken hata:', error);
+              Alert.alert('Hata', 'Pati silinirken bir hata oluştu');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const getHealthStatusIcon = (status: string) => {
     switch (status) {
@@ -237,6 +312,31 @@ export default function PatilerimScreen() {
                       <Text style={styles.notesText}>{selectedPati.notes}</Text>
                     </View>
                   )}
+
+                  <View style={styles.modalActions}>
+                    <TouchableOpacity
+                      style={[styles.modalButton, styles.editButton]}
+                      onPress={() => {
+                        setModalVisible(false);
+                        setEditForm({
+                          name: selectedPati.name || '',
+                          healthStatus: selectedPati.healthStatus,
+                          notes: selectedPati.notes || '',
+                          hasFood: selectedPati.hasFood
+                        });
+                        setEditModalVisible(true);
+                      }}
+                    >
+                      <Text style={styles.modalButtonText}>Düzenle</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.modalButton, styles.deleteButton]}
+                      onPress={handleDelete}
+                    >
+                      <Text style={styles.modalButtonText}>Sil</Text>
+                    </TouchableOpacity>
+                  </View>
                 </ScrollView>
 
                 <TouchableOpacity
@@ -247,6 +347,88 @@ export default function PatilerimScreen() {
                 </TouchableOpacity>
               </>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={editModalVisible}
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <ScrollView style={styles.modalDetails}>
+              <Text style={styles.modalTitle}>Pati Düzenle</Text>
+
+              <Text style={styles.label}>İsim</Text>
+              <TextInput
+                style={styles.input}
+                value={editForm.name}
+                onChangeText={(text) => setEditForm({ ...editForm, name: text })}
+                placeholder="Pati ismi"
+              />
+
+              <Text style={styles.label}>Sağlık Durumu</Text>
+              <View style={styles.statusContainer}>
+                {['sağlıklı', 'hasta', 'yaralı'].map((status) => (
+                  <TouchableOpacity
+                    key={status}
+                    style={[
+                      styles.statusButton,
+                      editForm.healthStatus === status && styles.statusButtonActive
+                    ]}
+                    onPress={() => setEditForm({ ...editForm, healthStatus: status })}
+                  >
+                    <Text style={[
+                      styles.statusButtonText,
+                      editForm.healthStatus === status && styles.statusButtonTextActive
+                    ]}>
+                      {getHealthStatusText(status)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.label}>Notlar</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                value={editForm.notes}
+                onChangeText={(text) => setEditForm({ ...editForm, notes: text })}
+                placeholder="Notlar"
+                multiline
+                numberOfLines={4}
+              />
+
+              <TouchableOpacity
+                style={styles.checkboxContainer}
+                onPress={() => setEditForm({ ...editForm, hasFood: !editForm.hasFood })}
+              >
+                <Ionicons
+                  name={editForm.hasFood ? 'checkbox' : 'square-outline'}
+                  size={24}
+                  color="#007AFF"
+                />
+                <Text style={styles.checkboxLabel}>Etrafında yemek var</Text>
+              </TouchableOpacity>
+
+              <View style={styles.editActions}>
+                <TouchableOpacity
+                  style={[styles.editActionButton, styles.saveButton]}
+                  onPress={handleEdit}
+                >
+                  <Text style={styles.editActionButtonText}>Kaydet</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.editActionButton, styles.cancelButton]}
+                  onPress={() => setEditModalVisible(false)}
+                >
+                  <Text style={styles.editActionButtonText}>İptal</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -348,54 +530,158 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '80%',
+    padding: 16,
+    maxHeight: '90%',
   },
   modalImage: {
     width: '100%',
-    height: 200,
+    height: 180,
     borderRadius: 10,
   },
   modalDetails: {
-    marginTop: 15,
+    marginTop: 12,
+    paddingBottom: 8,
   },
   modalName: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   foodStatus: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   foodText: {
     marginLeft: 8,
-    fontSize: 16,
+    fontSize: 14,
     color: '#4CAF50',
   },
   notesContainer: {
-    marginTop: 10,
+    marginTop: 8,
+    marginBottom: 8,
   },
   notesLabel: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    marginBottom: 5,
+    marginBottom: 4,
   },
   notesText: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#666',
-    lineHeight: 22,
+    lineHeight: 20,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    gap: 8,
+  },
+  modalButton: {
+    flex: 1,
+    padding: 10,
+    borderRadius: 8,
+    height: 40,
+    justifyContent: 'center',
+  },
+  editButton: {
+    backgroundColor: '#007AFF',
+  },
+  deleteButton: {
+    backgroundColor: '#FF3B30',
+  },
+  modalButtonText: {
+    color: '#fff',
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   closeButton: {
     backgroundColor: '#FF6B6B',
-    padding: 15,
-    borderRadius: 10,
+    padding: 12,
+    borderRadius: 8,
     alignItems: 'center',
-    marginTop: 15,
+    marginTop: 12,
   },
   closeButtonText: {
     color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    fontSize: 16,
+  },
+  textArea: {
+    height: 100,
+    textAlignVertical: 'top',
+  },
+  statusContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 16,
+  },
+  statusButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#f0f0f0',
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  statusButtonActive: {
+    backgroundColor: '#007AFF',
+  },
+  statusButtonText: {
+    color: '#333',
+  },
+  statusButtonTextActive: {
+    color: '#fff',
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  checkboxLabel: {
+    marginLeft: 8,
+    fontSize: 16,
+  },
+  editActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 24,
+  },
+  editActionButton: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 8,
+    marginHorizontal: 8,
+  },
+  saveButton: {
+    backgroundColor: '#007AFF',
+  },
+  cancelButton: {
+    backgroundColor: '#FF3B30',
+  },
+  editActionButtonText: {
+    color: '#fff',
+    textAlign: 'center',
     fontSize: 16,
     fontWeight: 'bold',
   },
