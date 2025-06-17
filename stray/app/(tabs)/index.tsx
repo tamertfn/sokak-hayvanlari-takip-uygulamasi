@@ -1,12 +1,13 @@
 import React from 'react';
-import { View, Text, StyleSheet, Dimensions, Alert, TouchableOpacity, Image, Modal, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, Alert, TouchableOpacity, Image, Modal, ScrollView, ActivityIndicator, TextInput } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { useEffect, useState } from 'react';
 import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { db } from '../../src/config/firebase';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, addDoc, serverTimestamp, orderBy, onSnapshot } from 'firebase/firestore';
+import { auth } from '../../src/config/firebase';
 
 type LocationType = {
   coords: {
@@ -29,6 +30,14 @@ type Pati = {
   userId?: string;
 };
 
+type Comment = {
+  id: string;
+  patiId: string;
+  userId: string;
+  text: string;
+  createdAt: any;
+};
+
 export default function TabIndexScreen() {
   const [location, setLocation] = useState<LocationType>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -38,6 +47,9 @@ export default function TabIndexScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [userOtherPatiler, setUserOtherPatiler] = useState<Pati[]>([]);
   const [isLoadingUserPatiler, setIsLoadingUserPatiler] = useState(false);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [newComment, setNewComment] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -105,10 +117,47 @@ export default function TabIndexScreen() {
     }
   };
 
-  const handlePatiSelect = (pati: Pati) => {
+  const handlePatiSelect = async (pati: Pati) => {
     setSelectedPati(pati);
     setModalVisible(true);
     setUserOtherPatiler([]);
+    // Yorumları dinlemeye başla
+    const commentsQuery = query(
+      collection(db, 'comments'),
+      where('patiId', '==', pati.id),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(commentsQuery, (snapshot) => {
+      const commentsList = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Comment[];
+      setComments(commentsList);
+    });
+
+    // Component unmount olduğunda dinlemeyi durdur
+    return () => unsubscribe();
+  };
+
+  const handleAddComment = async () => {
+    if (!newComment.trim() || !selectedPati || !auth.currentUser) return;
+
+    try {
+      setIsSubmitting(true);
+      await addDoc(collection(db, 'comments'), {
+        patiId: selectedPati.id,
+        userId: auth.currentUser.uid,
+        text: newComment.trim(),
+        createdAt: serverTimestamp()
+      });
+      setNewComment('');
+    } catch (error) {
+      console.error('Yorum eklenirken hata:', error);
+      Alert.alert('Hata', 'Yorum eklenirken bir hata oluştu.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const getHealthStatusColor = (status: string) => {
@@ -270,54 +319,37 @@ export default function TabIndexScreen() {
                         </View>
                       )}
 
-                      {selectedPati.userId && (
-                        <TouchableOpacity
-                          style={styles.viewOtherPatilerButton}
-                          onPress={() => {
-                            router.push({
-                              pathname: '/user-patiler/[userId]',
-                              params: { userId: selectedPati.userId as string }
-                            });
-                          }}
-                        >
-                          <Ionicons name="paw" size={20} color="white" />
-                          <Text style={styles.viewOtherPatilerButtonText}>
-                            Kullanıcının Tüm Patilerini Gör
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-
-                      {userOtherPatiler.length > 0 && (
-                        <View style={styles.userOtherPatilerContainer}>
-                          <Text style={styles.userOtherPatilerTitle}>Kullanıcının Diğer Patileri</Text>
-                          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                            {userOtherPatiler.map((pati) => (
-                              <TouchableOpacity
-                                key={pati.id}
-                                style={styles.userOtherPatiCard}
-                                onPress={() => {
-                                  setSelectedPati(pati);
-                                  setUserOtherPatiler([]);
-                                }}
-                              >
-                                <Image source={{ uri: pati.imageUrl }} style={styles.userOtherPatiImage} />
-                                <Text style={styles.userOtherPatiName}>{pati.name || 'İsimsiz Pati'}</Text>
-                                <View style={styles.userOtherPatiStatus}>
-                                  <Ionicons
-                                    name={getHealthStatusIcon(pati.healthStatus)}
-                                    size={16}
-                                    color={getHealthStatusColor(pati.healthStatus)}
-                                  />
-                                  <Text style={[styles.userOtherPatiStatusText, { color: getHealthStatusColor(pati.healthStatus) }]}>
-                                    {getHealthStatusText(pati.healthStatus)}
-                                  </Text>
-                                </View>
-                              </TouchableOpacity>
-                            ))}
-                          </ScrollView>
-                        </View>
-                      )}
+                      <View style={styles.commentsContainer}>
+                        <Text style={styles.commentsTitle}>Yorumlar</Text>
+                        {comments.map((comment) => (
+                          <View key={comment.id} style={styles.commentItem}>
+                            <Text style={styles.commentUserId}>{comment.userId}</Text>
+                            <Text style={styles.commentText}>{comment.text}</Text>
+                          </View>
+                        ))}
+                      </View>
                     </ScrollView>
+
+                    <View style={styles.commentInputContainer}>
+                      <TextInput
+                        style={styles.commentInput}
+                        value={newComment}
+                        onChangeText={setNewComment}
+                        placeholder="Yorum yaz..."
+                        multiline
+                      />
+                      <TouchableOpacity
+                        style={[styles.commentButton, (!newComment.trim() || isSubmitting) && styles.commentButtonDisabled]}
+                        onPress={handleAddComment}
+                        disabled={!newComment.trim() || isSubmitting}
+                      >
+                        {isSubmitting ? (
+                          <ActivityIndicator color="white" size="small" />
+                        ) : (
+                          <Ionicons name="send" size={24} color="white" />
+                        )}
+                      </TouchableOpacity>
+                    </View>
 
                     <TouchableOpacity
                       style={styles.closeButton}
@@ -587,5 +619,58 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 14,
     color: '#666',
+  },
+  commentsContainer: {
+    marginTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    paddingTop: 16,
+  },
+  commentsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  commentItem: {
+    backgroundColor: '#f5f5f5',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  commentUserId: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+  },
+  commentText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  commentInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  commentInput: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 8,
+    maxHeight: 100,
+  },
+  commentButton: {
+    backgroundColor: '#FF6B6B',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  commentButtonDisabled: {
+    backgroundColor: '#ccc',
   },
 });

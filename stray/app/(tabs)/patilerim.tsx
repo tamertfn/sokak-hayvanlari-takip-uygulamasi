@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, FlatList, Dimensions, TouchableOpacity, ActivityIndicator, RefreshControl, Alert, Modal, ScrollView, TextInput } from 'react-native';
 import { db } from '../../src/config/firebase';
-import { collection, query, where, getDocs, orderBy, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, doc, updateDoc, deleteDoc, addDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { auth } from '../../src/config/firebase';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -22,6 +22,14 @@ type Pati = {
   };
 };
 
+type Comment = {
+  id: string;
+  patiId: string;
+  userId: string;
+  text: string;
+  createdAt: any;
+};
+
 export default function PatilerimScreen() {
   const { editId } = useLocalSearchParams();
   const [patiler, setPatiler] = useState<Pati[]>([]);
@@ -37,6 +45,9 @@ export default function PatilerimScreen() {
     notes: '',
     hasFood: false
   });
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [newComment, setNewComment] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fetchPatiler = async () => {
     try {
@@ -207,12 +218,53 @@ export default function PatilerimScreen() {
     }
   };
 
+  const handlePatiSelect = async (pati: Pati) => {
+    setSelectedPati(pati);
+    setModalVisible(true);
+    // Yorumları dinlemeye başla
+    const commentsQuery = query(
+      collection(db, 'comments'),
+      where('patiId', '==', pati.id),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(commentsQuery, (snapshot) => {
+      const commentsList = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Comment[];
+      setComments(commentsList);
+    });
+
+    // Component unmount olduğunda dinlemeyi durdur
+    return () => unsubscribe();
+  };
+
+  const handleAddComment = async () => {
+    if (!newComment.trim() || !selectedPati || !auth.currentUser) return;
+
+    try {
+      setIsSubmitting(true);
+      await addDoc(collection(db, 'comments'), {
+        patiId: selectedPati.id,
+        userId: auth.currentUser.uid,
+        text: newComment.trim(),
+        createdAt: serverTimestamp()
+      });
+      setNewComment('');
+    } catch (error) {
+      console.error('Yorum eklenirken hata:', error);
+      Alert.alert('Hata', 'Yorum eklenirken bir hata oluştu.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const renderPatiCard = ({ item }: { item: Pati }) => (
     <TouchableOpacity
       style={styles.card}
       onPress={() => {
-        setSelectedPati(item);
-        setModalVisible(true);
+        handlePatiSelect(item);
       }}
     >
       <Image source={{ uri: item.imageUrl }} style={styles.cardImage} />
@@ -313,31 +365,37 @@ export default function PatilerimScreen() {
                     </View>
                   )}
 
-                  <View style={styles.modalActions}>
-                    <TouchableOpacity
-                      style={[styles.modalButton, styles.editButton]}
-                      onPress={() => {
-                        setModalVisible(false);
-                        setEditForm({
-                          name: selectedPati.name || '',
-                          healthStatus: selectedPati.healthStatus,
-                          notes: selectedPati.notes || '',
-                          hasFood: selectedPati.hasFood
-                        });
-                        setEditModalVisible(true);
-                      }}
-                    >
-                      <Text style={styles.modalButtonText}>Düzenle</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.modalButton, styles.deleteButton]}
-                      onPress={handleDelete}
-                    >
-                      <Text style={styles.modalButtonText}>Sil</Text>
-                    </TouchableOpacity>
+                  <View style={styles.commentsContainer}>
+                    <Text style={styles.commentsTitle}>Yorumlar</Text>
+                    {comments.map((comment) => (
+                      <View key={comment.id} style={styles.commentItem}>
+                        <Text style={styles.commentUserId}>{comment.userId}</Text>
+                        <Text style={styles.commentText}>{comment.text}</Text>
+                      </View>
+                    ))}
                   </View>
                 </ScrollView>
+
+                <View style={styles.commentInputContainer}>
+                  <TextInput
+                    style={styles.commentInput}
+                    value={newComment}
+                    onChangeText={setNewComment}
+                    placeholder="Yorum yaz..."
+                    multiline
+                  />
+                  <TouchableOpacity
+                    style={[styles.commentButton, (!newComment.trim() || isSubmitting) && styles.commentButtonDisabled]}
+                    onPress={handleAddComment}
+                    disabled={!newComment.trim() || isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <ActivityIndicator color="white" size="small" />
+                    ) : (
+                      <Ionicons name="send" size={24} color="white" />
+                    )}
+                  </TouchableOpacity>
+                </View>
 
                 <TouchableOpacity
                   style={styles.closeButton}
@@ -684,5 +742,58 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  commentsContainer: {
+    marginTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    paddingTop: 16,
+  },
+  commentsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  commentItem: {
+    backgroundColor: '#f5f5f5',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  commentUserId: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+  },
+  commentText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  commentInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  commentInput: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 8,
+    maxHeight: 100,
+  },
+  commentButton: {
+    backgroundColor: '#FF6B6B',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  commentButtonDisabled: {
+    backgroundColor: '#ccc',
   },
 }); 
