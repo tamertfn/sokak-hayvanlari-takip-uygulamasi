@@ -27,6 +27,12 @@ export default function RootLayout() {
           headerShown: false 
         }} 
       />
+      <Stack.Screen 
+        name="user-patiler/[userId]" 
+        options={{ 
+          headerShown: false 
+        }} 
+      />
     </Stack>
   );
 }

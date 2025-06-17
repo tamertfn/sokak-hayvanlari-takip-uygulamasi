@@ -274,22 +274,16 @@ export default function TabIndexScreen() {
                         <TouchableOpacity
                           style={styles.viewOtherPatilerButton}
                           onPress={() => {
-                            if (selectedPati.userId) {
-                              fetchUserOtherPatiler(selectedPati.userId);
-                            }
+                            router.push({
+                              pathname: '/user-patiler/[userId]',
+                              params: { userId: selectedPati.userId as string }
+                            });
                           }}
-                          disabled={isLoadingUserPatiler}
                         >
-                          {isLoadingUserPatiler ? (
-                            <ActivityIndicator color="white" size="small" />
-                          ) : (
-                            <>
-                              <Ionicons name="paw" size={20} color="white" />
-                              <Text style={styles.viewOtherPatilerButtonText}>
-                                Kullanıcının Diğer Patilerini Gör
-                              </Text>
-                            </>
-                          )}
+                          <Ionicons name="paw" size={20} color="white" />
+                          <Text style={styles.viewOtherPatilerButtonText}>
+                            Kullanıcının Tüm Patilerini Gör
+                          </Text>
                         </TouchableOpacity>
                       )}
 
