@@ -55,24 +55,24 @@ export default function LoginScreen() {
         <View style={styles.formContainer}>
           <View style={styles.inputContainer}>
             <Ionicons name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Email"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
+      <TextInput
+        style={styles.input}
+        placeholder="Email"
+        value={email}
+        onChangeText={setEmail}
+        autoCapitalize="none"
+        keyboardType="email-address"
               placeholderTextColor="#999"
-            />
+      />
           </View>
-
+      
           <View style={styles.inputContainer}>
             <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Şifre"
-              value={password}
-              onChangeText={setPassword}
+      <TextInput
+        style={styles.input}
+        placeholder="Şifre"
+        value={password}
+        onChangeText={setPassword}
               secureTextEntry={!showPassword}
               placeholderTextColor="#999"
             />
@@ -90,8 +90,8 @@ export default function LoginScreen() {
 
           <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleLogin}
-            disabled={loading}
+        onPress={handleLogin}
+        disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
@@ -105,13 +105,13 @@ export default function LoginScreen() {
 
           <TouchableOpacity
             style={styles.registerButton}
-            onPress={() => router.push('/register' as any)}
+        onPress={() => router.push('/register' as any)}
           >
             <Text style={styles.registerText}>
               Hesabınız yok mu? <Text style={styles.registerTextBold}>Kayıt Olun</Text>
             </Text>
           </TouchableOpacity>
-        </View>
+      </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );

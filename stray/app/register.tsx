@@ -62,24 +62,24 @@ export default function RegisterScreen() {
         <View style={styles.formContainer}>
           <View style={styles.inputContainer}>
             <Ionicons name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Email"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
+      <TextInput
+        style={styles.input}
+        placeholder="Email"
+        value={email}
+        onChangeText={setEmail}
+        autoCapitalize="none"
+        keyboardType="email-address"
               placeholderTextColor="#999"
-            />
+      />
           </View>
-
+      
           <View style={styles.inputContainer}>
             <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Şifre"
-              value={password}
-              onChangeText={setPassword}
+      <TextInput
+        style={styles.input}
+        placeholder="Şifre"
+        value={password}
+        onChangeText={setPassword}
               secureTextEntry={!showPassword}
               placeholderTextColor="#999"
             />
@@ -97,11 +97,11 @@ export default function RegisterScreen() {
 
           <View style={styles.inputContainer}>
             <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Şifre Tekrar"
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
+      <TextInput
+        style={styles.input}
+        placeholder="Şifre Tekrar"
+        value={confirmPassword}
+        onChangeText={setConfirmPassword}
               secureTextEntry={!showConfirmPassword}
               placeholderTextColor="#999"
             />
@@ -119,8 +119,8 @@ export default function RegisterScreen() {
 
           <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleRegister}
-            disabled={loading}
+        onPress={handleRegister}
+        disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
@@ -134,13 +134,13 @@ export default function RegisterScreen() {
 
           <TouchableOpacity
             style={styles.loginButton}
-            onPress={() => router.push('/login' as any)}
+        onPress={() => router.push('/login' as any)}
           >
             <Text style={styles.loginText}>
               Zaten hesabınız var mı? <Text style={styles.loginTextBold}>Giriş Yapın</Text>
             </Text>
           </TouchableOpacity>
-        </View>
+    </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );

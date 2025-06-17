@@ -6,7 +6,7 @@ import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { db } from '../../src/config/firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 
 type LocationType = {
   coords: {
@@ -26,6 +26,7 @@ type Pati = {
   };
   hasFood: boolean;
   notes: string | null;
+  userId?: string;
 };
 
 export default function TabIndexScreen() {
@@ -35,6 +36,8 @@ export default function TabIndexScreen() {
   const [selectedPati, setSelectedPati] = useState<Pati | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [userOtherPatiler, setUserOtherPatiler] = useState<Pati[]>([]);
+  const [isLoadingUserPatiler, setIsLoadingUserPatiler] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -77,6 +80,35 @@ export default function TabIndexScreen() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const fetchUserOtherPatiler = async (userId: string) => {
+    try {
+      setIsLoadingUserPatiler(true);
+      const querySnapshot = await getDocs(
+        query(
+          collection(db, 'patiler'),
+          where('userId', '==', userId)
+        )
+      );
+      const patiList = querySnapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }))
+        .filter(pati => pati.id !== selectedPati?.id) as Pati[];
+      setUserOtherPatiler(patiList);
+    } catch (error) {
+      console.error('Kullanıcının diğer patileri yüklenirken hata:', error);
+    } finally {
+      setIsLoadingUserPatiler(false);
+    }
+  };
+
+  const handlePatiSelect = (pati: Pati) => {
+    setSelectedPati(pati);
+    setModalVisible(true);
+    setUserOtherPatiler([]);
   };
 
   const getHealthStatusColor = (status: string) => {
@@ -125,10 +157,7 @@ export default function TabIndexScreen() {
         latitude: pati.location.latitude,
         longitude: pati.location.longitude,
       }}
-      onPress={() => {
-        setSelectedPati(pati);
-        setModalVisible(true);
-      }}
+      onPress={() => handlePatiSelect(pati)}
     >
       <View style={styles.markerWrapper}>
         <View style={styles.markerContainer}>
@@ -238,6 +267,60 @@ export default function TabIndexScreen() {
                         <View style={styles.notesContainer}>
                           <Text style={styles.notesLabel}>Notlar:</Text>
                           <Text style={styles.notesText}>{selectedPati.notes}</Text>
+                        </View>
+                      )}
+
+                      {selectedPati.userId && (
+                        <TouchableOpacity
+                          style={styles.viewOtherPatilerButton}
+                          onPress={() => {
+                            if (selectedPati.userId) {
+                              fetchUserOtherPatiler(selectedPati.userId);
+                            }
+                          }}
+                          disabled={isLoadingUserPatiler}
+                        >
+                          {isLoadingUserPatiler ? (
+                            <ActivityIndicator color="white" size="small" />
+                          ) : (
+                            <>
+                              <Ionicons name="paw" size={20} color="white" />
+                              <Text style={styles.viewOtherPatilerButtonText}>
+                                Kullanıcının Diğer Patilerini Gör
+                              </Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+                      )}
+
+                      {userOtherPatiler.length > 0 && (
+                        <View style={styles.userOtherPatilerContainer}>
+                          <Text style={styles.userOtherPatilerTitle}>Kullanıcının Diğer Patileri</Text>
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                            {userOtherPatiler.map((pati) => (
+                              <TouchableOpacity
+                                key={pati.id}
+                                style={styles.userOtherPatiCard}
+                                onPress={() => {
+                                  setSelectedPati(pati);
+                                  setUserOtherPatiler([]);
+                                }}
+                              >
+                                <Image source={{ uri: pati.imageUrl }} style={styles.userOtherPatiImage} />
+                                <Text style={styles.userOtherPatiName}>{pati.name || 'İsimsiz Pati'}</Text>
+                                <View style={styles.userOtherPatiStatus}>
+                                  <Ionicons
+                                    name={getHealthStatusIcon(pati.healthStatus)}
+                                    size={16}
+                                    color={getHealthStatusColor(pati.healthStatus)}
+                                  />
+                                  <Text style={[styles.userOtherPatiStatusText, { color: getHealthStatusColor(pati.healthStatus) }]}>
+                                    {getHealthStatusText(pati.healthStatus)}
+                                  </Text>
+                                </View>
+                              </TouchableOpacity>
+                            ))}
+                          </ScrollView>
                         </View>
                       )}
                     </ScrollView>
@@ -360,65 +443,127 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '80%',
+    padding: 15,
+    maxHeight: '90%',
   },
   modalImage: {
     width: '100%',
-    height: 200,
+    height: 180,
     borderRadius: 10,
   },
   modalDetails: {
-    marginTop: 15,
+    marginTop: 10,
   },
   modalName: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   healthStatus: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   healthText: {
-    marginLeft: 8,
-    fontSize: 16,
+    marginLeft: 6,
+    fontSize: 14,
     fontWeight: '600',
   },
   foodStatus: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   foodText: {
-    marginLeft: 8,
-    fontSize: 16,
+    marginLeft: 6,
+    fontSize: 14,
     color: '#4CAF50',
   },
   notesContainer: {
-    marginTop: 10,
+    marginTop: 8,
   },
   notesLabel: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    marginBottom: 5,
+    marginBottom: 4,
   },
   notesText: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#666',
-    lineHeight: 22,
+    lineHeight: 20,
+  },
+  viewOtherPatilerButton: {
+    backgroundColor: '#FF6B6B',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 10,
+    borderRadius: 8,
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  viewOtherPatilerButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  userOtherPatilerContainer: {
+    marginTop: 10,
+    paddingHorizontal: 5,
+  },
+  userOtherPatilerTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    color: '#333',
+  },
+  userOtherPatiCard: {
+    width: 130,
+    marginRight: 8,
+    backgroundColor: 'white',
+    borderRadius: 8,
+    padding: 8,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  userOtherPatiImage: {
+    width: '100%',
+    height: 90,
+    borderRadius: 6,
+    marginBottom: 6,
+  },
+  userOtherPatiName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 3,
+  },
+  userOtherPatiStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  userOtherPatiStatusText: {
+    marginLeft: 3,
+    fontSize: 11,
+    fontWeight: '500',
   },
   closeButton: {
     backgroundColor: '#FF6B6B',
-    padding: 15,
-    borderRadius: 10,
+    padding: 12,
+    borderRadius: 8,
     alignItems: 'center',
-    marginTop: 15,
+    marginTop: 10,
   },
   closeButtonText: {
     color: 'white',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
   },
   refreshButton: {
@@ -439,5 +584,14 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
+  },
+  loadingContainer: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 14,
+    color: '#666',
   },
 });

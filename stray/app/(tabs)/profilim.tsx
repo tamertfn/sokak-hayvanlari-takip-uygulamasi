@@ -123,7 +123,7 @@ export default function ProfilimScreen() {
             </View>
           </View>
         )}
-      </View>
+    </View>
     </ScrollView>
   );
 }
