@@ -319,6 +319,24 @@ export default function TabIndexScreen() {
                         </View>
                       )}
 
+                      <View style={styles.modalActions}>
+                        <TouchableOpacity
+                          style={[styles.modalButton, styles.editButton]}
+                          onPress={() => {
+                            if (selectedPati?.userId) {
+                              setModalVisible(false);
+                              router.push({
+                                pathname: '/user-patiler/[userId]',
+                                params: { userId: selectedPati.userId }
+                              });
+                            }
+                          }}
+                        >
+                          <Ionicons name="list" size={20} color="white" style={{ marginRight: 8 }} />
+                          <Text style={styles.modalButtonText}>Kullanıcının Diğer Patileri</Text>
+                        </TouchableOpacity>
+                      </View>
+
                       <View style={styles.commentsContainer}>
                         <Text style={styles.commentsTitle}>Yorumlar</Text>
                         {comments.map((comment) => (
@@ -672,5 +690,28 @@ const styles = StyleSheet.create({
   },
   commentButtonDisabled: {
     backgroundColor: '#ccc',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    marginBottom: 16,
+  },
+  modalButton: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: '#FF6B6B',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  editButton: {
+    backgroundColor: '#FF6B6B',
   },
 });
