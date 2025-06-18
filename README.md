@@ -9,6 +9,8 @@ Anlatim videomu izleyebileceginiz ve apkda sorun olmasi durumunda apkyi indirebi
 
 Bildirim sistemini yetistiremedim. (Normelde kullanicinin son login yaptigi yeri merkez kabul eden 5km capli dairedeki hayvanlarda guncelleme oldugunda veya favorilerdeki hayvanlardan birinde guncelleme oldugunda bildirim gidecekti)
 
+Kayıt olmak istemiyorsanız deneme@hotmail.com:deneme ile giriş yapabilirsiniz
+
 ## Özellikler
 
 ### Giriş ve Kayıt Ekranları /app/login.tsx, /app/register.tsx
