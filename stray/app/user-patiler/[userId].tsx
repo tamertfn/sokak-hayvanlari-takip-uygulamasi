@@ -1,25 +1,23 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, FlatList, Dimensions, TouchableOpacity, ActivityIndicator, RefreshControl, Alert, Modal, ScrollView, TextInput } from 'react-native';
-import { db } from '../../src/config/firebase';
-import { collection, query, where, getDocs, orderBy, doc, updateDoc, deleteDoc, addDoc, serverTimestamp, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
-import { auth } from '../../src/config/firebase';
-import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, ActivityIndicator, Modal, ScrollView, TextInput, Alert } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { db } from '../../src/config/firebase';
+import { collection, query, where, getDocs, addDoc, serverTimestamp, orderBy, onSnapshot, doc, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
+import { auth } from '../../src/config/firebase';
 
 type Pati = {
   id: string;
   name: string | null;
   healthStatus: string;
   imageUrl: string;
-  createdAt: any;
-  userId: string;
-  hasFood: boolean;
-  notes: string | null;
   location: {
     latitude: number;
     longitude: number;
   };
+  hasFood: boolean;
+  notes: string | null;
+  userId?: string;
 };
 
 type Comment = {
@@ -30,171 +28,46 @@ type Comment = {
   createdAt: any;
 };
 
-export default function PatilerimScreen() {
-  const { editId } = useLocalSearchParams();
+export default function UserPatilerScreen() {
+  const { userId } = useLocalSearchParams();
   const [patiler, setPatiler] = useState<Pati[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [selectedPati, setSelectedPati] = useState<Pati | null>(null);
-  const [modalVisible, setModalVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [editModalVisible, setEditModalVisible] = useState(false);
-  const [editForm, setEditForm] = useState({
-    name: '',
-    healthStatus: '',
-    notes: '',
-    hasFood: false
-  });
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedPati, setSelectedPati] = useState<Pati | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
 
-  const fetchPatiler = async () => {
+  useEffect(() => {
+    fetchUserPatiler();
+  }, [userId]);
+
+  const fetchUserPatiler = async () => {
     try {
-      console.log('Patiler yükleniyor...');
-      const userId = auth.currentUser?.uid;
-      console.log('Current User ID:', userId);
-
-      if (!userId) {
-        console.log('Kullanıcı oturum açmamış');
-        setPatiler([]);
-        return;
-      }
-
-      const patilerRef = collection(db, 'patiler');
-      console.log('Firestore collection referansı alındı');
-
-      const q = query(
-        patilerRef,
-        where('userId', '==', userId),
-        orderBy('createdAt', 'desc')
+      setLoading(true);
+      const querySnapshot = await getDocs(
+        query(
+          collection(db, 'patiler'),
+          where('userId', '==', userId)
+        )
       );
-      console.log('Query oluşturuldu');
-
-      const querySnapshot = await getDocs(q);
-      console.log('Query sonuçları alındı, döküman sayısı:', querySnapshot.size);
-
-      const patiList = querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        console.log('Döküman verisi:', data);
-        return {
-          id: doc.id,
-          ...data
-        };
-      }) as Pati[];
-
-      console.log('İşlenmiş pati listesi:', patiList);
+      const patiList = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Pati[];
       setPatiler(patiList);
     } catch (error) {
-      console.error('Patiler yüklenirken hata:', error);
-      Alert.alert(
-        'Hata',
-        'Patiler yüklenirken bir hata oluştu. Lütfen tekrar deneyin.'
-      );
-      setPatiler([]);
-      setError('Patiler yüklenirken bir hata oluştu. Lütfen tekrar deneyin.');
+      console.error('Kullanıcının patileri yüklenirken hata:', error);
+      setError('Patiler yüklenirken bir hata oluştu');
     } finally {
       setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  // Ekran her odaklandığında verileri yenile
-  useFocusEffect(
-    useCallback(() => {
-      console.log('Ekran odaklandı, veriler yenileniyor...');
-      fetchPatiler();
-    }, [])
-  );
-
-  const onRefresh = useCallback(() => {
-    console.log('Manuel yenileme başlatıldı');
-    setRefreshing(true);
-    fetchPatiler();
-  }, []);
-
-  useEffect(() => {
-    if (editId) {
-      const pati = patiler.find(p => p.id === editId);
-      if (pati) {
-        setSelectedPati(pati);
-        setEditForm({
-          name: pati.name || '',
-          healthStatus: pati.healthStatus,
-          notes: pati.notes || '',
-          hasFood: pati.hasFood
-        });
-        setEditModalVisible(true);
-      }
-    }
-  }, [editId, patiler]);
-
-  const handleEdit = async () => {
-    if (!selectedPati) return;
-
-    try {
-      const patiRef = doc(db, 'patiler', selectedPati.id);
-      await updateDoc(patiRef, {
-        name: editForm.name,
-        healthStatus: editForm.healthStatus,
-        notes: editForm.notes,
-        hasFood: editForm.hasFood,
-        updatedAt: new Date()
-      });
-
-      Alert.alert('Başarılı', 'Pati bilgileri güncellendi');
-      setEditModalVisible(false);
-      fetchPatiler();
-    } catch (error) {
-      console.error('Pati güncellenirken hata:', error);
-      Alert.alert('Hata', 'Pati güncellenirken bir hata oluştu');
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!selectedPati) return;
-
-    Alert.alert(
-      'Pati Sil',
-      'Bu patiyi silmek istediğinizden emin misiniz?',
-      [
-        { text: 'İptal', style: 'cancel' },
-        {
-          text: 'Sil',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const patiRef = doc(db, 'patiler', selectedPati.id);
-              await deleteDoc(patiRef);
-              Alert.alert('Başarılı', 'Pati başarıyla silindi');
-              setModalVisible(false);
-              fetchPatiler();
-            } catch (error) {
-              console.error('Pati silinirken hata:', error);
-              Alert.alert('Hata', 'Pati silinirken bir hata oluştu');
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const getHealthStatusIcon = (status: string) => {
-    switch (status) {
-      case 'sağlıklı':
-        return 'checkmark-circle';
-      case 'hasta':
-        return 'medical';
-      case 'yaralı':
-        return 'bandage';
-      default:
-        return 'help-circle';
     }
   };
 
   const getHealthStatusColor = (status: string) => {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case 'sağlıklı':
         return '#4CAF50';
       case 'hasta':
@@ -206,8 +79,21 @@ export default function PatilerimScreen() {
     }
   };
 
+  const getHealthStatusIcon = (status: string) => {
+    switch (status.toLowerCase()) {
+      case 'sağlıklı':
+        return 'checkmark-circle';
+      case 'hasta':
+        return 'medical';
+      case 'yaralı':
+        return 'bandage';
+      default:
+        return 'help-circle';
+    }
+  };
+
   const getHealthStatusText = (status: string) => {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case 'sağlıklı':
         return 'Sağlıklı';
       case 'hasta':
@@ -246,6 +132,26 @@ export default function PatilerimScreen() {
     return () => unsubscribe();
   };
 
+  const handleAddComment = async () => {
+    if (!newComment.trim() || !selectedPati || !auth.currentUser) return;
+
+    try {
+      setIsSubmitting(true);
+      await addDoc(collection(db, 'comments'), {
+        patiId: selectedPati.id,
+        userId: auth.currentUser.uid,
+        text: newComment.trim(),
+        createdAt: serverTimestamp()
+      });
+      setNewComment('');
+    } catch (error) {
+      console.error('Yorum eklenirken hata:', error);
+      Alert.alert('Hata', 'Yorum eklenirken bir hata oluştu.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const toggleFavorite = async () => {
     if (!selectedPati || !auth.currentUser) return;
 
@@ -269,32 +175,10 @@ export default function PatilerimScreen() {
     }
   };
 
-  const handleAddComment = async () => {
-    if (!newComment.trim() || !selectedPati || !auth.currentUser) return;
-
-    try {
-      setIsSubmitting(true);
-      await addDoc(collection(db, 'comments'), {
-        patiId: selectedPati.id,
-        userId: auth.currentUser.uid,
-        text: newComment.trim(),
-        createdAt: serverTimestamp()
-      });
-      setNewComment('');
-    } catch (error) {
-      console.error('Yorum eklenirken hata:', error);
-      Alert.alert('Hata', 'Yorum eklenirken bir hata oluştu.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const renderPatiCard = ({ item }: { item: Pati }) => (
     <TouchableOpacity
       style={styles.card}
-      onPress={() => {
-        handlePatiSelect(item);
-      }}
+      onPress={() => handlePatiSelect(item)}
     >
       <Image source={{ uri: item.imageUrl }} style={styles.cardImage} />
       <View style={styles.cardContent}>
@@ -309,6 +193,12 @@ export default function PatilerimScreen() {
             {getHealthStatusText(item.healthStatus)}
           </Text>
         </View>
+        {item.hasFood && (
+          <View style={styles.foodStatus}>
+            <Ionicons name="restaurant" size={20} color="#4CAF50" />
+            <Text style={styles.foodText}>Etrafında yemek var</Text>
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -322,17 +212,30 @@ export default function PatilerimScreen() {
     );
   }
 
+  if (error) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>{error}</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Patilerim</Text>
+        <TouchableOpacity 
+          onPress={() => router.push({
+            pathname: '/(tabs)',
+            params: { selectedPatiId: patiler[0]?.id }
+          })} 
+          style={styles.backButton}
+        >
+          <Ionicons name="arrow-back" size={24} color="#FF6B6B" />
+        </TouchableOpacity>
+        <Text style={styles.title}>Kullanıcının Diğer Patileri</Text>
       </View>
 
-      {error ? (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      ) : patiler.length === 0 ? (
+      {patiler.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="paw" size={64} color="#ccc" />
           <Text style={styles.emptyText}>Henüz pati eklenmemiş</Text>
@@ -344,9 +247,6 @@ export default function PatilerimScreen() {
           keyExtractor={(item) => item.id}
           numColumns={2}
           contentContainerStyle={styles.listContainer}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
         />
       )}
 
@@ -449,88 +349,6 @@ export default function PatilerimScreen() {
           </View>
         </View>
       </Modal>
-
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={editModalVisible}
-        onRequestClose={() => setEditModalVisible(false)}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <ScrollView style={styles.modalDetails}>
-              <Text style={styles.modalTitle}>Pati Düzenle</Text>
-
-              <Text style={styles.label}>İsim</Text>
-              <TextInput
-                style={styles.input}
-                value={editForm.name}
-                onChangeText={(text) => setEditForm({ ...editForm, name: text })}
-                placeholder="Pati ismi"
-              />
-
-              <Text style={styles.label}>Sağlık Durumu</Text>
-              <View style={styles.statusContainer}>
-                {['sağlıklı', 'hasta', 'yaralı'].map((status) => (
-                  <TouchableOpacity
-                    key={status}
-                    style={[
-                      styles.statusButton,
-                      editForm.healthStatus === status && styles.statusButtonActive
-                    ]}
-                    onPress={() => setEditForm({ ...editForm, healthStatus: status })}
-                  >
-                    <Text style={[
-                      styles.statusButtonText,
-                      editForm.healthStatus === status && styles.statusButtonTextActive
-                    ]}>
-                      {getHealthStatusText(status)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Text style={styles.label}>Notlar</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={editForm.notes}
-                onChangeText={(text) => setEditForm({ ...editForm, notes: text })}
-                placeholder="Notlar"
-                multiline
-                numberOfLines={4}
-              />
-
-              <TouchableOpacity
-                style={styles.checkboxContainer}
-                onPress={() => setEditForm({ ...editForm, hasFood: !editForm.hasFood })}
-              >
-                <Ionicons
-                  name={editForm.hasFood ? 'checkbox' : 'square-outline'}
-                  size={24}
-                  color="#007AFF"
-                />
-                <Text style={styles.checkboxLabel}>Etrafında yemek var</Text>
-              </TouchableOpacity>
-
-              <View style={styles.editActions}>
-                <TouchableOpacity
-                  style={[styles.editActionButton, styles.saveButton]}
-                  onPress={handleEdit}
-                >
-                  <Text style={styles.editActionButtonText}>Kaydet</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.editActionButton, styles.cancelButton]}
-                  onPress={() => setEditModalVisible(false)}
-                >
-                  <Text style={styles.editActionButtonText}>İptal</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -538,16 +356,23 @@ export default function PatilerimScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#f5f5f5',
   },
   header: {
-    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 15,
+    backgroundColor: 'white',
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
   },
+  backButton: {
+    marginRight: 15,
+  },
   title: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: 'bold',
+    color: '#333',
   },
   loadingContainer: {
     flex: 1,
@@ -555,7 +380,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    marginTop: 16,
+    marginTop: 10,
     fontSize: 16,
     color: '#666',
   },
@@ -563,12 +388,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 20,
   },
   errorText: {
     fontSize: 16,
-    color: '#666',
+    color: '#FF6B6B',
     textAlign: 'center',
-    marginTop: 20,
   },
   emptyContainer: {
     flex: 1,
@@ -576,49 +401,58 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyText: {
-    marginTop: 16,
+    marginTop: 10,
     fontSize: 16,
     color: '#666',
   },
   listContainer: {
-    padding: 8,
+    padding: 10,
   },
   card: {
     flex: 1,
-    margin: 8,
-    borderRadius: 12,
+    margin: 5,
     backgroundColor: 'white',
+    borderRadius: 10,
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
       height: 2,
     },
     shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
-    overflow: 'hidden',
+    shadowRadius: 3,
+    elevation: 3,
   },
   cardImage: {
     width: '100%',
     height: 150,
-    resizeMode: 'cover',
   },
   cardContent: {
-    padding: 12,
+    padding: 10,
   },
   cardName: {
     fontSize: 16,
     fontWeight: 'bold',
-    marginBottom: 8,
+    marginBottom: 5,
   },
   healthStatus: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 5,
   },
   healthText: {
-    marginLeft: 8,
+    marginLeft: 5,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '500',
+  },
+  foodStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  foodText: {
+    marginLeft: 5,
+    fontSize: 14,
+    color: '#4CAF50',
   },
   modalContainer: {
     flex: 1,
@@ -646,19 +480,8 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 8,
   },
-  foodStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  foodText: {
-    marginLeft: 8,
-    fontSize: 14,
-    color: '#4CAF50',
-  },
   notesContainer: {
     marginTop: 8,
-    marginBottom: 8,
   },
   notesLabel: {
     fontSize: 14,
@@ -670,119 +493,17 @@ const styles = StyleSheet.create({
     color: '#666',
     lineHeight: 20,
   },
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 12,
-    gap: 8,
-  },
-  modalButton: {
-    flex: 1,
-    padding: 10,
-    borderRadius: 8,
-    height: 40,
-    justifyContent: 'center',
-  },
-  editButton: {
-    backgroundColor: '#007AFF',
-  },
-  deleteButton: {
-    backgroundColor: '#FF3B30',
-  },
-  modalButtonText: {
-    color: '#fff',
-    textAlign: 'center',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
   closeButton: {
     backgroundColor: '#FF6B6B',
     padding: 12,
     borderRadius: 8,
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: 8,
   },
   closeButtonText: {
     color: 'white',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  label: {
     fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    fontSize: 16,
-  },
-  textArea: {
-    height: 100,
-    textAlignVertical: 'top',
-  },
-  statusContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 16,
-  },
-  statusButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#f0f0f0',
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  statusButtonActive: {
-    backgroundColor: '#007AFF',
-  },
-  statusButtonText: {
-    color: '#333',
-  },
-  statusButtonTextActive: {
-    color: '#fff',
-  },
-  checkboxContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  checkboxLabel: {
-    marginLeft: 8,
-    fontSize: 16,
-  },
-  editActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 24,
-  },
-  editActionButton: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 8,
-    marginHorizontal: 8,
-  },
-  saveButton: {
-    backgroundColor: '#007AFF',
-  },
-  cancelButton: {
-    backgroundColor: '#FF3B30',
-  },
-  editActionButtonText: {
-    color: '#fff',
-    textAlign: 'center',
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
   commentsContainer: {
     marginTop: 16,
