@@ -51,6 +51,8 @@ export default function TabIndexScreen() {
   const [newComment, setNewComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
+  const [filterModalVisible, setFilterModalVisible] = useState(false);
+  const [selectedFilters, setSelectedFilters] = useState<string[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -257,6 +259,76 @@ export default function TabIndexScreen() {
     </Marker>
   );
 
+  const toggleFilter = (status: string) => {
+    setSelectedFilters(prev => {
+      if (prev.includes(status)) {
+        return prev.filter(s => s !== status);
+      } else {
+        return [...prev, status];
+      }
+    });
+  };
+
+  const getFilteredPatiler = () => {
+    if (selectedFilters.length === 0) return patiler;
+    return patiler.filter(pati => selectedFilters.includes(pati.healthStatus.toLowerCase()));
+  };
+
+  const renderFilterModal = () => (
+    <Modal
+      animationType="slide"
+      transparent={true}
+      visible={filterModalVisible}
+      onRequestClose={() => setFilterModalVisible(false)}
+    >
+      <View style={styles.filterModalContainer}>
+        <View style={styles.filterModalContent}>
+          <View style={styles.filterHeader}>
+            <Text style={styles.filterTitle}>Sağlık Durumu Filtrele</Text>
+            <TouchableOpacity
+              style={styles.closeFilterButton}
+              onPress={() => setFilterModalVisible(false)}
+            >
+              <Ionicons name="close" size={24} color="#333" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.filterOptions}>
+            {['sağlıklı', 'hasta', 'yaralı'].map((status) => (
+              <TouchableOpacity
+                key={status}
+                style={[
+                  styles.filterOption,
+                  selectedFilters.includes(status) && styles.filterOptionSelected
+                ]}
+                onPress={() => toggleFilter(status)}
+              >
+                <Ionicons
+                  name={getHealthStatusIcon(status)}
+                  size={24}
+                  color={selectedFilters.includes(status) ? 'white' : getHealthStatusColor(status)}
+                />
+                <Text style={[
+                  styles.filterOptionText,
+                  selectedFilters.includes(status) && styles.filterOptionTextSelected
+                ]}>
+                  {getHealthStatusText(status)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <TouchableOpacity
+            style={styles.clearFiltersButton}
+            onPress={() => setSelectedFilters([])}
+          >
+            <Text style={styles.clearFiltersText}>Filtreleri Temizle</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+
   if (errorMsg) {
     return (
       <View style={styles.container}>
@@ -267,168 +339,147 @@ export default function TabIndexScreen() {
 
   return (
     <View style={styles.container}>
-      {location ? (
-        <>
-          <MapView
-            style={styles.map}
-            initialRegion={{
-              latitude: location.coords.latitude,
-              longitude: location.coords.longitude,
-              latitudeDelta: 0.0922,
-              longitudeDelta: 0.0421,
-            }}
-            provider="google"
-            showsUserLocation={true}
-            showsMyLocationButton={true}
-          >
-            {patiler.map(renderPatiMarker)}
-          </MapView>
+      <MapView
+        style={styles.map}
+        initialRegion={location ? {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+          latitudeDelta: 0.0922,
+          longitudeDelta: 0.0421,
+        } : undefined}
+        showsUserLocation
+      >
+        {getFilteredPatiler().map(pati => renderPatiMarker(pati))}
+      </MapView>
 
-          <TouchableOpacity 
-            style={styles.refreshButton}
-            onPress={fetchPatiler}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="white" />
-            ) : (
-              <Ionicons name="refresh" size={24} color="white" />
-            )}
-          </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.filterButton}
+        onPress={() => setFilterModalVisible(true)}
+      >
+        <Ionicons name="filter" size={24} color="white" />
+        {selectedFilters.length > 0 && (
+          <View style={styles.filterBadge}>
+            <Text style={styles.filterBadgeText}>{selectedFilters.length}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={styles.fab}
-            onPress={() => router.push('/yeni-pati' as any)}
-          >
-            <View style={styles.fabContent}>
-              <Ionicons name="add" size={24} color="white" />
-              <Text style={styles.fabText}>Yeni Pati Ekle</Text>
-            </View>
-          </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.refreshButton}
+        onPress={fetchPatiler}
+      >
+        <Ionicons name="refresh" size={24} color="white" />
+      </TouchableOpacity>
 
-          <Modal
-            animationType="slide"
-            transparent={true}
-            visible={modalVisible}
-            onRequestClose={() => setModalVisible(false)}
-          >
-            <View style={styles.modalContainer}>
-              <View style={styles.modalContent}>
-                {selectedPati && (
-                  <>
-                    <Image
-                      source={{ uri: selectedPati.imageUrl }}
-                      style={styles.modalImage}
-                    />
-                    <ScrollView style={styles.modalDetails}>
-                      <View style={styles.modalHeader}>
-                        <Text style={styles.modalName}>
-                          {selectedPati.name || 'İsimsiz Pati'}
-                        </Text>
-                        <TouchableOpacity
-                          style={styles.favoriteButton}
-                          onPress={toggleFavorite}
-                        >
-                          <Ionicons
-                            name={isFavorite ? 'heart' : 'heart-outline'}
-                            size={24}
-                            color={isFavorite ? '#FF6B6B' : '#666'}
-                          />
-                        </TouchableOpacity>
-                      </View>
-                      
-                      <View style={styles.healthStatus}>
-                        <Ionicons
-                          name={getHealthStatusIcon(selectedPati.healthStatus)}
-                          size={24}
-                          color={getHealthStatusColor(selectedPati.healthStatus)}
-                        />
-                        <Text style={[styles.healthText, { color: getHealthStatusColor(selectedPati.healthStatus) }]}>
-                          {getHealthStatusText(selectedPati.healthStatus)}
-                        </Text>
-                      </View>
+      <TouchableOpacity
+        style={styles.addButton}
+        onPress={() => router.push('/yeni-pati')}
+      >
+        <Ionicons name="add" size={24} color="white" />
+        <Text style={styles.addButtonText}>Yeni Pati Ekle</Text>
+      </TouchableOpacity>
 
-                      {selectedPati.hasFood && (
-                        <View style={styles.foodStatus}>
-                          <Ionicons name="restaurant" size={24} color="#4CAF50" />
-                          <Text style={styles.foodText}>Etrafında yemek var</Text>
-                        </View>
-                      )}
+      {renderFilterModal()}
 
-                      {selectedPati.notes && (
-                        <View style={styles.notesContainer}>
-                          <Text style={styles.notesLabel}>Notlar:</Text>
-                          <Text style={styles.notesText}>{selectedPati.notes}</Text>
-                        </View>
-                      )}
-
-                      <View style={styles.modalActions}>
-                        <TouchableOpacity
-                          style={[styles.modalButton, styles.editButton]}
-                          onPress={() => {
-                            if (selectedPati?.userId) {
-                              setModalVisible(false);
-                              router.push({
-                                pathname: '/user-patiler/[userId]',
-                                params: { userId: selectedPati.userId }
-                              });
-                            }
-                          }}
-                        >
-                          <Ionicons name="list" size={20} color="white" style={{ marginRight: 8 }} />
-                          <Text style={styles.modalButtonText}>Kullanıcının Diğer Patileri</Text>
-                        </TouchableOpacity>
-                      </View>
-
-                      <View style={styles.commentsContainer}>
-                        <Text style={styles.commentsTitle}>Yorumlar</Text>
-                        {comments.map((comment) => (
-                          <View key={comment.id} style={styles.commentItem}>
-                            <Text style={styles.commentUserId}>{comment.userId}</Text>
-                            <Text style={styles.commentText}>{comment.text}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    </ScrollView>
-
-                    <View style={styles.commentInputContainer}>
-                      <TextInput
-                        style={styles.commentInput}
-                        value={newComment}
-                        onChangeText={setNewComment}
-                        placeholder="Yorum yaz..."
-                        multiline
-                      />
-                      <TouchableOpacity
-                        style={[styles.commentButton, (!newComment.trim() || isSubmitting) && styles.commentButtonDisabled]}
-                        onPress={handleAddComment}
-                        disabled={!newComment.trim() || isSubmitting}
-                      >
-                        {isSubmitting ? (
-                          <ActivityIndicator color="white" size="small" />
-                        ) : (
-                          <Ionicons name="send" size={24} color="white" />
-                        )}
-                      </TouchableOpacity>
-                    </View>
-
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            {selectedPati && (
+              <>
+                <Image
+                  source={{ uri: selectedPati.imageUrl }}
+                  style={styles.modalImage}
+                />
+                <ScrollView style={styles.modalDetails}>
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalName}>
+                      {selectedPati.name || 'İsimsiz Pati'}
+                    </Text>
                     <TouchableOpacity
-                      style={styles.closeButton}
-                      onPress={() => setModalVisible(false)}
+                      style={styles.favoriteButton}
+                      onPress={toggleFavorite}
                     >
-                      <Text style={styles.closeButtonText}>Kapat</Text>
+                      <Ionicons
+                        name={isFavorite ? 'heart' : 'heart-outline'}
+                        size={24}
+                        color={isFavorite ? '#FF6B6B' : '#666'}
+                      />
                     </TouchableOpacity>
-                  </>
-                )}
-              </View>
-            </View>
-          </Modal>
-        </>
-      ) : (
-        <View style={styles.container}>
-          <Text style={styles.errorText}>Konum yükleniyor...</Text>
+                  </View>
+                  
+                  <View style={styles.healthStatus}>
+                    <Ionicons
+                      name={getHealthStatusIcon(selectedPati.healthStatus)}
+                      size={24}
+                      color={getHealthStatusColor(selectedPati.healthStatus)}
+                    />
+                    <Text style={[styles.healthText, { color: getHealthStatusColor(selectedPati.healthStatus) }]}>
+                      {getHealthStatusText(selectedPati.healthStatus)}
+                    </Text>
+                  </View>
+
+                  {selectedPati.hasFood && (
+                    <View style={styles.foodStatus}>
+                      <Ionicons name="restaurant" size={24} color="#4CAF50" />
+                      <Text style={styles.foodText}>Etrafında yemek var</Text>
+                    </View>
+                  )}
+
+                  {selectedPati.notes && (
+                    <View style={styles.notesContainer}>
+                      <Text style={styles.notesLabel}>Notlar:</Text>
+                      <Text style={styles.notesText}>{selectedPati.notes}</Text>
+                    </View>
+                  )}
+
+                  <View style={styles.commentsContainer}>
+                    <Text style={styles.commentsTitle}>Yorumlar</Text>
+                    {comments.map((comment) => (
+                      <View key={comment.id} style={styles.commentItem}>
+                        <Text style={styles.commentUserId}>{comment.userId}</Text>
+                        <Text style={styles.commentText}>{comment.text}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </ScrollView>
+
+                <View style={styles.commentInputContainer}>
+                  <TextInput
+                    style={styles.commentInput}
+                    value={newComment}
+                    onChangeText={setNewComment}
+                    placeholder="Yorum yaz..."
+                    multiline
+                  />
+                  <TouchableOpacity
+                    style={[styles.commentButton, (!newComment.trim() || isSubmitting) && styles.commentButtonDisabled]}
+                    onPress={handleAddComment}
+                    disabled={!newComment.trim() || isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <ActivityIndicator color="white" size="small" />
+                    ) : (
+                      <Ionicons name="send" size={24} color="white" />
+                    )}
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={() => setModalVisible(false)}
+                >
+                  <Text style={styles.closeButtonText}>Kapat</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
         </View>
-      )}
+      </Modal>
     </View>
   );
 }
@@ -655,15 +706,14 @@ const styles = StyleSheet.create({
   },
   refreshButton: {
     position: 'absolute',
-    right: 20,
-    top: 20,
+    top: 16,
+    left: 16,
     backgroundColor: '#FF6B6B',
     width: 50,
     height: 50,
     borderRadius: 25,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 5,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -671,6 +721,7 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
+    elevation: 5,
   },
   loadingContainer: {
     padding: 20,
@@ -765,5 +816,127 @@ const styles = StyleSheet.create({
   },
   favoriteButton: {
     padding: 8,
+  },
+  filterButton: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    backgroundColor: '#FF6B6B',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  filterBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    backgroundColor: '#FF3B30',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterBadgeText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  filterModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  filterModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+  },
+  filterHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  filterTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  closeFilterButton: {
+    padding: 8,
+  },
+  filterOptions: {
+    gap: 12,
+  },
+  filterOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  filterOptionSelected: {
+    backgroundColor: '#FF6B6B',
+    borderColor: '#FF6B6B',
+  },
+  filterOptionText: {
+    marginLeft: 12,
+    fontSize: 16,
+    color: '#333',
+  },
+  filterOptionTextSelected: {
+    color: 'white',
+  },
+  clearFiltersButton: {
+    marginTop: 20,
+    padding: 16,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  clearFiltersText: {
+    color: '#FF6B6B',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  addButton: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    backgroundColor: '#FF6B6B',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 25,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  addButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 8,
   },
 });
